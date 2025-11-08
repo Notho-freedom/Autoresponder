@@ -1,0 +1,41 @@
+# Fichiers Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environnement virtuel
+venv/
+ENV/
+env/
+
+# Variables d'environnement et credentials
+.env
+.env.local
+firestore-credentials.json
+*-firebase-adminsdk-*.json
+
+# Base de données locale
+data/responses.json
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+MIGRATION.md
+
+# Tests
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
