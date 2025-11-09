@@ -14,7 +14,7 @@ from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 
 from services.db_factory import get_database_service
-from services.smtp_email_service import SMTPEmailService
+from services.sendgrid_email_service import SendGridEmailService
 from services.sms_service import SMSService
 
 
@@ -75,7 +75,7 @@ def initialize_services():
     
     try:
         if not email_service:
-            email_service = SMTPEmailService()
+            email_service = SendGridEmailService()
         if not sms_service:
             sms_service = SMSService()
     except Exception as e:
