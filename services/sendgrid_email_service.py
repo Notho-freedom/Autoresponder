@@ -61,7 +61,7 @@ class SendGridEmailService:
             )
             
             # Anti-spam: Reply-To pour ne pas répondre à noreply
-            message.reply_to = Email("oragroup24@gmail.com", "Support")
+            message.reply_to = Email(os.getenv('SENDGRID_REPLY_TO_EMAIL'), "Contact Support")
             
             # Headers pour améliorer la délivrabilité
             message.tracking_settings = {
