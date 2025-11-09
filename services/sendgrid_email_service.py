@@ -54,11 +54,20 @@ class SendGridEmailService:
         
         try:
             message = Mail(
-                from_email=Email(self.from_email),
+                from_email=Email(self.from_email, "Auto-Responder"),
                 to_emails=To(to_email),
                 subject=subject,
                 html_content=Content("text/html", content) if content_type == "html" else Content("text/plain", content)
             )
+            
+            # Anti-spam: Reply-To pour ne pas répondre à noreply
+            message.reply_to = Email("oragroup24@gmail.com", "Support")
+            
+            # Headers pour améliorer la délivrabilité
+            message.tracking_settings = {
+                "click_tracking": {"enable": False},
+                "open_tracking": {"enable": False}
+            }
             
             response = self.client.send(message)
             
@@ -87,7 +96,7 @@ class SendGridEmailService:
         from utils.validators import extract_email_username, sanitize_name
         
         display_name = sanitize_name(name) if name else extract_email_username(to_email)
-        subject = "Confirmation de réception de votre formulaire"
+        subject = f"Confirmation - Formulaire recu de {display_name}"
         html_content = EmailTemplates.get_confirmation_html(display_name, to_email)
         
         return self.send_email(to_email, subject, html_content, "html")
