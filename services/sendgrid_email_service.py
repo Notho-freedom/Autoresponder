@@ -54,7 +54,7 @@ class SendGridEmailService:
         
         try:
             message = Mail(
-                from_email=Email(self.from_email, "Auto-Responder"),
+                from_email=Email(self.from_email, str(os.getenv('SENDGRID_EMAIL_NAME', 'No Reply'))),
                 to_emails=To(to_email),
                 subject=subject,
                 html_content=Content("text/html", content) if content_type == "html" else Content("text/plain", content)
