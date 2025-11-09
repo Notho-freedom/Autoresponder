@@ -1,7 +1,7 @@
 """
-Application FastAPI principale - VERSION OPTIMISÉE
+Application FastAPI principale
 Microservice de réponse automatique aux formulaires Google
-Avec logging centralisé, gestion des services optimisée, et messages centralisés
+Version optimisée avec logging centralisé et gestion améliorée des services
 """
 import os
 import hashlib
@@ -74,15 +74,15 @@ class FormResponse(BaseModel):
         return v
 
 
-class StatusResponse(BaseModel):
-    """Modèle de réponse pour le statut du service"""
-    status: str
-    timestamp: str
-    services: Dict[str, bool]
-    stats: Optional[Dict[str, Any]] = None
-
 
 # Fonctions utilitaires
+def verify_secret_key(authorization: Optional[str]) -> bool:
+        if not sms_service:
+            sms_service = SMSService()
+    except Exception as e:
+        print(f"Erreur lors de l'initialisation des services: {str(e)}")
+
+
 def verify_secret_key(authorization: Optional[str]) -> bool:
     """
     Vérifie la clé secrète dans le header Authorization
@@ -98,18 +98,18 @@ def verify_secret_key(authorization: Optional[str]) -> bool:
     
     # Format attendu: "Bearer <secret_key>"
     try:
+    """
+    if not authorization:
+        return False
+    
+    # Format attendu: "Bearer <secret_key>"
+    try:
         scheme, token = authorization.split(maxsplit=1)
         if scheme.lower() != 'bearer':
             return False
         return token == SECRET_KEY
     except ValueError:
         return False
-
-
-def generate_response_id(email: str, phone: str, timestamp: Optional[str] = None) -> str:
-    """
-    Génère un ID unique pour une réponse
-    
     Args:
         email: E-mail du répondant
         phone: Téléphone du répondant
@@ -129,6 +129,19 @@ def generate_response_id(email: str, phone: str, timestamp: Optional[str] = None
 @app.get("/")
 async def root():
     """Route racine - Information sur l'API"""
+    return {
+        "service": "Google Forms Auto-Responder",
+        "version": "1.0.0",
+        "status": "running",
+        "endpoints": {
+            "status": "/api/status",
+            "receive": "/api/receive (POST)"
+        }
+    }
+
+@app.get("/")
+async def root():
+    """Route racine - Information sur l'API"""
     return APIResponses.success(
         data={
             "service": Config.APP_NAME,
@@ -139,14 +152,12 @@ async def root():
             }
         },
         message="API is running"
-    )
-
-
+    )ms_ok = sms_service.test_connection() if sms_service else False
 @app.get("/api/status", response_model=StatusResponse)
 async def check_status():
     """
     Endpoint de vérification du statut du service
-    Retourne l'état des différents services et statistiques (avec cache de 5 min)
+    Retourne l'état des différents services et statistiques (avec cache)
     """
     try:
         # Vérifier l'état des services via le service manager
@@ -166,24 +177,12 @@ async def check_status():
         raise HTTPException(
             status_code=StatusCodes.INTERNAL_ERROR,
             detail=f"Status check failed: {str(e)}"
-        )
-
-
-@app.post("/api/receive")
-async def receive_form_response(
-    request: Request,
-    authorization: Optional[str] = Header(None)
-):
-    """
-    Endpoint principal pour recevoir les données du formulaire Google
-    Version optimisée avec validation, logging et gestion d'erreurs améliorée
-    
-    Workflow:
-        1. Vérifie l'authentification
-        2. Parse et valide les données
-        3. Vérifie si déjà traité (déduplication)
-        4. Envoie email et SMS
-        5. Enregistre dans Firestore
+        )orkflow:
+    1. Vérifie l'authentification
+    2. Parse les données reçues
+    3. Vérifie si déjà traité
+    4. Envoie e-mail et SMS
+    5. Enregistre dans la base locale
     
     Headers requis:
         Authorization: Bearer <secret_key>
@@ -198,17 +197,21 @@ async def receive_form_response(
     """
     # Vérifier l'authentification
     if not verify_secret_key(authorization):
-        logger.warning("Unauthorized access attempt")
         raise HTTPException(
-            status_code=StatusCodes.UNAUTHORIZED,
-            detail=ErrorMessages.UNAUTHORIZED
+            status_code=401,
+            detail="Unauthorized: Invalid or missing secret key"
         )
+    
+    # Initialiser les services si nécessaire
+    initialize_services()
     
     try:
         # Parser les données reçues
         data = await request.json()
         
-        # Extraire les champs (support multi-formats)
+        # Extraire les champs nécessaires
+        # Google Apps Script peut envoyer les données sous différents formats
+        # On supporte à la fois le format direct et le format namedValues
         if isinstance(data, dict) and 'namedValues' in data:
             # Format Google Apps Script standard
             named_values = data['namedValues']
@@ -226,42 +229,15 @@ async def receive_form_response(
         # Valider les données
         if not email or not phone:
             raise HTTPException(
-                status_code=StatusCodes.BAD_REQUEST,
-                detail=ErrorMessages.MISSING_REQUIRED_FIELDS.format(fields="email, phone")
+                status_code=400,
+                detail="Missing required fields: email and phone are mandatory"
             )
-        
-        # Validation supplémentaire
-        if not is_valid_email(email):
-            raise HTTPException(
-                status_code=StatusCodes.BAD_REQUEST,
-                detail=ErrorMessages.INVALID_EMAIL.format(email=email)
-            )
-        
-        if not is_valid_phone(phone):
-            raise HTTPException(
-                status_code=StatusCodes.BAD_REQUEST,
-                detail=ErrorMessages.INVALID_PHONE.format(phone=phone)
-            )
-        
-        # Normaliser les données
-        phone = normalize_phone(phone)
-        name = sanitize_name(name) if name else None
-        
-        logger.info(InfoMessages.PROCESSING_REQUEST.format(email=email))
         
         # Générer un ID unique pour cette réponse
         response_id = generate_response_id(email, phone, timestamp)
         
         # Vérifier si déjà traité
-        if service_manager.db_service.already_sent(response_id):
-            logger.info(InfoMessages.DUPLICATE_DETECTED.format(response_id=response_id))
-            return JSONResponse(
-                status_code=StatusCodes.OK,
-                content=APIResponses.success(
-                    message=ErrorMessages.ALREADY_PROCESSED,
-                    data={"response_id": response_id, "status": "duplicate"}
-                )
-            )
+        if db_service.already_sent(response_id):
         
         # Envoi des messages (avec gestion d'erreurs robuste)
         mail_sent = False
@@ -329,7 +305,6 @@ async def receive_form_response(
             detail=ErrorMessages.PROCESSING_FAILED.format(error=str(e))
         )
 
-
 @app.get("/api/responses")
 async def get_all_responses(authorization: Optional[str] = Header(None)):
     """
@@ -348,10 +323,6 @@ async def get_all_responses(authorization: Optional[str] = Header(None)):
             "total": len(responses),
             "responses": responses
         }
-    )
-
-
-# Événements de démarrage et arrêt
 @app.on_event("startup")
 async def startup_event():
     """Initialisation au démarrage de l'application"""
@@ -364,6 +335,11 @@ async def startup_event():
 async def shutdown_event():
     """Nettoyage à l'arrêt de l'application"""
     logger.info(InfoMessages.SHUTDOWN.format(app_name=Config.APP_NAME))
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Nettoyage à l'arrêt de l'application"""
+    print("🛑 Shutting down Google Forms Auto-Responder...")
 
 
 # Point d'entrée pour exécution directe

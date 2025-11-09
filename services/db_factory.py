@@ -21,7 +21,7 @@ def get_database_service() -> FirestoreService:
     firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
     firebase_creds_path = os.getenv('FIREBASE_CREDENTIALS_PATH', 'firestore-credentials.json')
     
-    print("🔥 Initialisation de Firestore pour le stockage...")
+    print(">> Initialisation de Firestore pour le stockage...")
     
     try:
         if firebase_creds_json:
@@ -30,7 +30,7 @@ def get_database_service() -> FirestoreService:
             return FirestoreService(credentials_path=firebase_creds_path)
     except Exception as e:
         raise ValueError(
-            f"❌ Erreur lors de l'initialisation de Firestore: {str(e)}\n"
+            f"[ERREUR] Erreur lors de l'initialisation de Firestore: {str(e)}\n"
             "Assurez-vous d'avoir configuré FIREBASE_CREDENTIALS_JSON ou firestore-credentials.json"
         )
 

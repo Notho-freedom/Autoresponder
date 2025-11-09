@@ -40,129 +40,386 @@ const NAME_FIELD_NAME = 'Nom';              // ou 'Name' (optionnel)
  */
 function onFormSubmit(e) {
   try {
-    // Log de l'objet e pour debugging
     Logger.log('📝 Nouvelle soumission de formulaire reçue');
-    Logger.log('Type de e: ' + typeof e);
-    Logger.log('Contenu de e: ' + JSON.stringify(e));
     
-    // Récupérer les réponses du formulaire
-    // Méthode alternative si e.namedValues est undefined
-    let namedValues;
+    // Récupérer les données avec stratégie de fallback robuste
+    const namedValues = extractFormData(e);
     
-    if (e && e.namedValues) {
-      // Méthode standard avec déclencheur
-      namedValues = e.namedValues;
-      Logger.log('✅ Utilisation de e.namedValues');
-    } else if (e && e.response) {
-      // Méthode alternative avec e.response
-      namedValues = e.response.getItemResponses().reduce((acc, item) => {
-        const title = item.getItem().getTitle();
-        const response = item.getResponse();
-        acc[title] = Array.isArray(response) ? response : [response];
-        return acc;
-      }, {});
-      Logger.log('✅ Utilisation de e.response (méthode alternative)');
-    } else {
-      // Dernière tentative : récupérer directement du formulaire
-      const form = FormApp.getActiveForm();
-      const formResponses = form.getResponses();
-      if (formResponses.length > 0) {
-        const lastResponse = formResponses[formResponses.length - 1];
-        namedValues = lastResponse.getItemResponses().reduce((acc, item) => {
-          const title = item.getItem().getTitle();
-          const response = item.getResponse();
-          acc[title] = Array.isArray(response) ? response : [response];
-          return acc;
-        }, {});
-        Logger.log('✅ Récupération de la dernière réponse du formulaire');
-      } else {
-        Logger.log('❌ Aucune donnée disponible');
-        return;
-      }
-    }
-    
-    Logger.log('Données extraites: ' + JSON.stringify(namedValues));
-    
-    // Extraire les champs nécessaires (toujours extraire la première valeur du tableau)
-    let email = getFieldValue(namedValues, EMAIL_FIELD_NAME);
-    let phone = getFieldValue(namedValues, PHONE_FIELD_NAME);
-    let name = getFieldValue(namedValues, NAME_FIELD_NAME);
-    
-    // Si les valeurs sont toujours des tableaux, extraire le premier élément
-    if (Array.isArray(email)) email = email[0] || '';
-    if (Array.isArray(phone)) phone = phone[0] || '';
-    if (Array.isArray(name)) name = name[0] || '';
-    
-    // Vérifier que les champs obligatoires sont présents
-    if (!email || !phone) {
-      Logger.log('❌ Erreur : e-mail ou téléphone manquant');
-      Logger.log('Email: ' + email);
-      Logger.log('Phone: ' + phone);
-      Logger.log('Champs disponibles: ' + Object.keys(namedValues).join(', '));
+    if (!namedValues || Object.keys(namedValues).length === 0) {
+      Logger.log('❌ Impossible d\'extraire les données du formulaire');
       return;
     }
     
-    // Construire le payload à envoyer (avec chaînes simples, pas de tableaux)
-    const payload = {
-      email: String(email),
-      phone: String(phone),
-      name: String(name || ''),
-      timestamp: new Date().toISOString()
-    };
+    Logger.log('✅ Données extraites: ' + JSON.stringify(namedValues));
+    Logger.log('📋 Champs disponibles: ' + Object.keys(namedValues).join(', '));
     
-    // Options de la requête HTTP
-    const options = {
-      method: 'post',
-      contentType: 'application/json',
-      headers: {
-        'Authorization': 'Bearer ' + SECRET_KEY
-      },
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true  // Pour gérer les erreurs HTTP manuellement
-    };
+    // Extraction intelligente des champs avec multiples tentatives
+    const email = extractField(namedValues, [
+      EMAIL_FIELD_NAME,
+      'email',
+      'e-mail',
+      'Email',
+      'E-mail',
+      'Adresse e-mail',
+      'Adresse électronique',
+      'Mail'
+    ]);
     
-    // Envoyer la requête au backend
-    Logger.log('📤 Envoi des données au backend...');
-    const response = UrlFetchApp.fetch(SERVER_URL + '/api/receive', options);
-    const responseCode = response.getResponseCode();
-    const responseText = response.getContentText();
+    const phone = extractField(namedValues, [
+      PHONE_FIELD_NAME,
+      'phone',
+      'téléphone',
+      'telephone',
+      'Phone',
+      'Téléphone',
+      'Numéro de téléphone',
+      'Numéro',
+      'Tel',
+      'Tél'
+    ]);
     
-    // Log de la réponse
-    if (responseCode >= 200 && responseCode < 300) {
-      Logger.log('✅ Succès ! Réponse du serveur : ' + responseText);
-    } else {
-      Logger.log('⚠️ Erreur HTTP ' + responseCode + ' : ' + responseText);
+    const name = extractField(namedValues, [
+      NAME_FIELD_NAME,
+      'name',
+      'nom',
+      'Name',
+      'Nom',
+      'Nom complet',
+      'Prénom',
+      'prenom',
+      'Nom et prénom'
+    ]);
+    
+    // Validation stricte des champs obligatoires
+    if (!email || !isValidEmail(email)) {
+      Logger.log('❌ Email manquant ou invalide: ' + email);
+      Logger.log('💡 Vérifiez que le champ email existe: ' + Object.keys(namedValues).join(', '));
+      return;
     }
     
-  } catch (error) {
-    // Gestion des erreurs
-    Logger.log('❌ Erreur lors du traitement : ' + error.toString());
+    if (!phone || !isValidPhone(phone)) {
+      Logger.log('❌ Téléphone manquant ou invalide: ' + phone);
+      Logger.log('💡 Vérifiez que le champ téléphone existe: ' + Object.keys(namedValues).join(', '));
+      return;
+    }
     
-    // Optionnel : Envoyer une notification par e-mail en cas d'erreur
-    // MailApp.sendEmail('admin@example.com', 'Erreur Auto-Responder', error.toString());
+    Logger.log('✅ Email validé: ' + email);
+    Logger.log('✅ Téléphone validé: ' + phone);
+    Logger.log('ℹ️  Nom: ' + (name || '(non fourni)'));
+    
+    // Construire le payload nettoyé
+    const payload = {
+      email: cleanString(email),
+      phone: cleanString(phone),
+      name: cleanString(name || ''),
+      timestamp: new Date().toISOString(),
+      response_id: generateResponseId(email, phone)
+    };
+    
+    // Envoyer au backend avec retry
+    sendToBackend(payload);
+    
+  } catch (error) {
+    Logger.log('❌ Erreur critique: ' + error.toString());
+    Logger.log('Stack trace: ' + error.stack);
+    
+    // Notification d'erreur (optionnel)
+    try {
+      MailApp.sendEmail({
+        to: 'oragroup24@gmail.com',
+        subject: '🔴 Erreur Auto-Responder',
+        body: 'Erreur lors du traitement du formulaire:\n\n' + error.toString() + '\n\nStack:\n' + error.stack
+      });
+    } catch (e) {
+      Logger.log('⚠️ Impossible d\'envoyer l\'email d\'erreur: ' + e.toString());
+    }
   }
 }
 
 
 /**
- * Fonction utilitaire pour extraire une valeur d'un champ
+ * Extrait les données du formulaire avec stratégie de fallback robuste
+ * @param {Object} e - Objet événement
+ * @return {Object} Données du formulaire normalisées
+ */
+function extractFormData(e) {
+  Logger.log('🔍 Extraction des données (Type: ' + typeof e + ')');
+  
+  // Stratégie 1: e.namedValues (déclencheur standard)
+  if (e && e.namedValues && Object.keys(e.namedValues).length > 0) {
+    Logger.log('✅ Méthode 1: e.namedValues');
+    return normalizeData(e.namedValues);
+  }
+  
+  // Stratégie 2: e.response.getItemResponses()
+  if (e && e.response) {
+    try {
+      Logger.log('🔄 Méthode 2: e.response.getItemResponses()');
+      const items = e.response.getItemResponses();
+      const data = {};
+      items.forEach(function(item) {
+        const title = item.getItem().getTitle();
+        const response = item.getResponse();
+        data[title] = Array.isArray(response) ? response : [response];
+      });
+      if (Object.keys(data).length > 0) {
+        Logger.log('✅ Données extraites via e.response');
+        return normalizeData(data);
+      }
+    } catch (err) {
+      Logger.log('⚠️ Erreur méthode 2: ' + err.toString());
+    }
+  }
+  
+  // Stratégie 3: Récupérer la dernière réponse directement du formulaire
+  try {
+    Logger.log('🔄 Méthode 3: FormApp.getActiveForm()');
+    const form = FormApp.getActiveForm();
+    const responses = form.getResponses();
+    
+    if (responses.length > 0) {
+      const lastResponse = responses[responses.length - 1];
+      const items = lastResponse.getItemResponses();
+      const data = {};
+      
+      items.forEach(function(item) {
+        const title = item.getItem().getTitle();
+        const response = item.getResponse();
+        data[title] = Array.isArray(response) ? response : [response];
+      });
+      
+      if (Object.keys(data).length > 0) {
+        Logger.log('✅ Données extraites via FormApp (dernière réponse)');
+        return normalizeData(data);
+      }
+    }
+  } catch (err) {
+    Logger.log('⚠️ Erreur méthode 3: ' + err.toString());
+  }
+  
+  // Stratégie 4: Si e contient directement les données
+  if (e && typeof e === 'object' && !e.namedValues && !e.response) {
+    Logger.log('🔄 Méthode 4: Objet direct');
+    return normalizeData(e);
+  }
+  
+  Logger.log('❌ Aucune méthode d\'extraction n\'a fonctionné');
+  return {};
+}
+
+
+/**
+ * Normalise les données (tableaux → chaînes) - Version améliorée
+ * @param {Object} data - Données brutes
+ * @return {Object} Données normalisées
+ */
+function normalizeData(data) {
+  const normalized = {};
+  for (const key in data) {
+    const value = data[key];
+    
+    if (Array.isArray(value)) {
+      // Filtrer les valeurs vides et prendre la première valide
+      const filtered = value.filter(function(v) { return v != null && v !== ''; });
+      normalized[key] = filtered.length > 0 ? String(filtered[0]).trim() : '';
+    } else {
+      normalized[key] = value != null ? String(value).trim() : '';
+    }
+  }
+  return normalized;
+}
+
+
+/**
+ * Extrait un champ avec multiples variantes de noms (version optimisée avec scoring)
+ * @param {Object} data - Données normalisées
+ * @param {Array<string>} fieldNames - Liste des noms possibles (ordre de priorité)
+ * @return {string} Valeur trouvée ou chaîne vide
+ */
+function extractField(data, fieldNames) {
+  let bestMatch = { value: '', score: 0 };
+  
+  for (let i = 0; i < fieldNames.length; i++) {
+    const fieldName = fieldNames[i];
+    const priority = fieldNames.length - i;  // Premier nom = plus haute priorité
+    
+    for (const key in data) {
+      const keyLower = key.toLowerCase();
+      const fieldLower = fieldName.toLowerCase();
+      let score = 0;
+      
+      // Score 1: Correspondance exacte (case-insensitive)
+      if (keyLower === fieldLower) {
+        score = 1000 + priority;
+      }
+      // Score 2: Correspondance exacte (avec espaces normalisés)
+      else if (keyLower.replace(/\s+/g, ' ') === fieldLower.replace(/\s+/g, ' ')) {
+        score = 900 + priority;
+      }
+      // Score 3: Le champ commence par le terme recherché
+      else if (keyLower.startsWith(fieldLower)) {
+        score = 500 + priority;
+      }
+      // Score 4: Le champ se termine par le terme recherché
+      else if (keyLower.endsWith(fieldLower)) {
+        score = 400 + priority;
+      }
+      // Score 5: Le terme est contenu (avec pénalité selon position)
+      else if (keyLower.indexOf(fieldLower) !== -1) {
+        const position = keyLower.indexOf(fieldLower);
+        score = 200 + priority - position;
+      }
+      
+      // Si ce match est meilleur, le garder
+      if (score > bestMatch.score && data[key]) {
+        bestMatch = {
+          value: String(data[key]).trim(),
+          score: score,
+          matchedKey: key,
+          searchTerm: fieldName
+        };
+      }
+    }
+  }
+  
+  // Log du meilleur match pour debugging
+  if (bestMatch.score > 0) {
+    Logger.log('🎯 Match trouvé: "' + bestMatch.matchedKey + '" (score: ' + bestMatch.score + ') pour "' + bestMatch.searchTerm + '"');
+  }
+  
+  return bestMatch.value;
+}
+
+
+/**
+ * Valide une adresse email
+ * @param {string} email - Email à valider
+ * @return {boolean} True si valide
+ */
+function isValidEmail(email) {
+  if (!email) return false;
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+}
+
+
+/**
+ * Valide un numéro de téléphone - Version assouplie
+ * @param {string} phone - Téléphone à valider
+ * @return {boolean} True si valide
+ */
+function isValidPhone(phone) {
+  if (!phone) return false;
+  // Accepte les numéros avec ou sans +, espaces, tirets, parenthèses, points
+  const cleaned = phone.replace(/[\s\-\(\)\.]/g, '');
+  // Doit contenir au moins 6 chiffres (permet numéros courts et services)
+  // Maximum 20 chiffres (codes internationaux longs)
+  return /^\+?[\d]{6,20}$/.test(cleaned);
+}
+
+
+/**
+ * Nettoie une chaîne (trim + normalisation)
+ * @param {string} str - Chaîne à nettoyer
+ * @return {string} Chaîne nettoyée
+ */
+function cleanString(str) {
+  if (!str) return '';
+  return String(str).trim().replace(/\s+/g, ' ');
+}
+
+
+/**
+ * Génère un ID unique pour la réponse
+ * @param {string} email - Email
+ * @param {string} phone - Téléphone
+ * @return {string} ID unique
+ */
+function generateResponseId(email, phone) {
+  const timestamp = new Date().getTime();
+  const data = email + phone + timestamp;
+  // Simple hash (pour ID unique, pas pour sécurité)
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    const char = data.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+
+/**
+ * Envoie les données au backend avec retry
+ * @param {Object} payload - Données à envoyer
+ */
+function sendToBackend(payload) {
+  const maxRetries = 3;
+  let attempt = 0;
+  
+  while (attempt < maxRetries) {
+    attempt++;
+    
+    try {
+      Logger.log('📤 Tentative ' + attempt + '/' + maxRetries + ' - Envoi au backend...');
+      
+      const options = {
+        method: 'post',
+        contentType: 'application/json',
+        headers: {
+          'Authorization': 'Bearer ' + SECRET_KEY,
+          'User-Agent': 'Google-Apps-Script/1.0'
+        },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true,
+        timeout: 60000  // 60 secondes
+      };
+      
+      const response = UrlFetchApp.fetch(SERVER_URL + '/api/receive', options);
+      const responseCode = response.getResponseCode();
+      const responseText = response.getContentText();
+      
+      Logger.log('📥 Code HTTP: ' + responseCode);
+      Logger.log('📥 Réponse: ' + responseText);
+      
+      if (responseCode >= 200 && responseCode < 300) {
+        Logger.log('✅ Succès ! Email et SMS envoyés.');
+        return true;
+      } else if (responseCode === 401) {
+        Logger.log('🔒 Erreur d\'authentification - Vérifiez SECRET_KEY');
+        return false;  // Pas de retry pour erreur d'auth
+      } else if (responseCode >= 500) {
+        Logger.log('⚠️ Erreur serveur ' + responseCode + ' - Retry dans 2s...');
+        Utilities.sleep(2000);
+        continue;
+      } else {
+        Logger.log('⚠️ Erreur client ' + responseCode + ': ' + responseText);
+        return false;
+      }
+      
+    } catch (error) {
+      Logger.log('❌ Erreur réseau (tentative ' + attempt + '): ' + error.toString());
+      
+      if (attempt < maxRetries) {
+        Logger.log('⏳ Retry dans ' + (attempt * 2) + ' secondes...');
+        Utilities.sleep(attempt * 2000);
+      }
+    }
+  }
+  
+  Logger.log('❌ Échec après ' + maxRetries + ' tentatives');
+  return false;
+}
+
+
+/**
+ * Fonction utilitaire pour extraire une valeur d'un champ (legacy - gardée pour compatibilité)
  * @param {Object} namedValues - Objet contenant toutes les réponses
  * @param {string} fieldName - Nom du champ à extraire
  * @return {string} La valeur du champ ou chaîne vide
  */
 function getFieldValue(namedValues, fieldName) {
-  if (!fieldName) return '';
-  
-  // Chercher le champ (insensible à la casse)
-  for (const key in namedValues) {
-    if (key.toLowerCase() === fieldName.toLowerCase()) {
-      const value = namedValues[key];
-      // Retourner la première valeur si c'est un tableau
-      return Array.isArray(value) ? value[0] : value;
-    }
-  }
-  
-  return '';
+  return extractField(namedValues, [fieldName]);
 }
 
 

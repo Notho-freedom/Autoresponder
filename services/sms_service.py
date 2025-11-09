@@ -1,10 +1,17 @@
 """
 Service d'envoi de SMS via Twilio
 Gère l'envoi automatique de messages SMS
+VERSION OPTIMISÉE avec logging et messages centralisés
 """
 import os
 from twilio.rest import Client
 from typing import Optional
+
+from config.constants import ErrorMessages, SuccessMessages, SMSTemplates, Config
+from utils.logger import setup_logger
+from utils.validators import normalize_phone
+
+logger = setup_logger(__name__)
 
 
 class SMSService:
@@ -24,9 +31,11 @@ class SMSService:
         self.phone_number = phone_number or os.getenv('TWILIO_PHONE_NUMBER')
         
         if not all([self.account_sid, self.auth_token, self.phone_number]):
-            raise ValueError("Twilio credentials (SID, Token, Phone) are required")
+            logger.error(ErrorMessages.TWILIO_CREDENTIALS_MISSING)
+            raise ValueError(ErrorMessages.TWILIO_CREDENTIALS_MISSING)
         
         self.client = Client(self.account_sid, self.auth_token)
+        logger.info(SuccessMessages.SERVICE_INITIALIZED.format(service=f"Twilio ({self.phone_number})"))
     
     def send_sms(self, to_phone: str, content: str) -> bool:
         """
@@ -40,9 +49,8 @@ class SMSService:
             True si envoyé avec succès, False sinon
         """
         try:
-            # Normaliser le numéro si nécessaire
-            if not to_phone.startswith('+'):
-                to_phone = '+' + to_phone
+            # Normaliser le numéro
+            to_phone = normalize_phone(to_phone)
             
             message = self.client.messages.create(
                 body=content,
@@ -51,10 +59,15 @@ class SMSService:
             )
             
             # Vérifier que le message a été envoyé ou est en cours d'envoi
-            return message.sid is not None and message.status in ['queued', 'sent', 'delivered']
+            if message.sid and message.status in ['queued', 'sent', 'delivered']:
+                logger.info(SuccessMessages.SMS_SENT.format(phone=to_phone))
+                return True
+            else:
+                logger.warning(f"SMS status unexpected: {message.status}")
+                return False
             
         except Exception as e:
-            print(f"Erreur lors de l'envoi du SMS à {to_phone}: {str(e)}")
+            logger.error(ErrorMessages.TWILIO_SEND_FAILED.format(error=str(e)))
             return False
     
     def send_confirmation_sms(self, to_phone: str, user_name: Optional[str] = None) -> bool:
@@ -68,15 +81,16 @@ class SMSService:
         Returns:
             True si envoyé avec succès, False sinon
         """
-        # Message court et concis pour SMS
-        if user_name:
-            content = f"Bonjour {user_name}, nous avons bien reçu votre réponse. Merci !"
-        else:
-            content = "Nous avons bien reçu votre réponse au formulaire. Merci pour votre participation !"
+        from utils.validators import sanitize_name
         
-        # Limiter à 160 caractères pour un SMS standard
-        if len(content) > 160:
-            content = content[:157] + "..."
+        # Nettoyer le nom si fourni
+        clean_name = sanitize_name(user_name) if user_name else None
+        
+        # Générer le message
+        content = SMSTemplates.get_confirmation_message(clean_name)
+        
+        # Tronquer si nécessaire
+        content = SMSTemplates.truncate_message(content, Config.SMS_MAX_LENGTH)
         
         return self.send_sms(to_phone, content)
     
@@ -90,9 +104,12 @@ class SMSService:
         try:
             # Récupérer les informations du compte pour tester la connexion
             account = self.client.api.accounts(self.account_sid).fetch()
-            return account.status == 'active'
+            is_active = account.status == 'active'
+            if is_active:
+                logger.info(SuccessMessages.SERVICE_HEALTHY.format(service="Twilio"))
+            return is_active
         except Exception as e:
-            print(f"Erreur de connexion Twilio: {str(e)}")
+            logger.error(ErrorMessages.TWILIO_CONNECTION_FAILED.format(error=str(e)))
             return False
     
     def get_account_balance(self) -> Optional[str]:
@@ -106,5 +123,5 @@ class SMSService:
             balance = self.client.api.accounts(self.account_sid).balance.fetch()
             return f"{balance.balance} {balance.currency}"
         except Exception as e:
-            print(f"Erreur lors de la récupération du solde: {str(e)}")
+            logger.error(f"Failed to get Twilio balance: {str(e)}")
             return None

@@ -1,11 +1,17 @@
 """
 Service d'envoi d'e-mails avec SendGrid
 Alternative à SMTP qui fonctionne sur tous les hébergeurs
+VERSION OPTIMISÉE avec logging et templates centralisés
 """
 import os
 from typing import Optional
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, To, Content
+
+from config.constants import ErrorMessages, SuccessMessages, EmailTemplates
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class SendGridEmailService:
@@ -17,11 +23,11 @@ class SendGridEmailService:
         self.from_email = os.getenv('SENDGRID_FROM_EMAIL', os.getenv('SMTP_FROM_EMAIL', 'noreply@example.com'))
         
         if not self.api_key:
-            print("⚠️  SENDGRID_API_KEY non configuré, le service email ne fonctionnera pas")
+            logger.warning(ErrorMessages.SENDGRID_API_KEY_MISSING)
             self.client = None
         else:
             self.client = SendGridAPIClient(self.api_key)
-            print(f"✅ Service SendGrid initialisé avec {self.from_email}")
+            logger.info(SuccessMessages.SERVICE_INITIALIZED.format(service=f"SendGrid ({self.from_email})"))
     
     def send_email(
         self, 
@@ -43,7 +49,7 @@ class SendGridEmailService:
             True si envoyé avec succès, False sinon
         """
         if not self.client:
-            print("❌ Service SendGrid non initialisé")
+            logger.error(ErrorMessages.EMAIL_SERVICE_FAILED)
             return False
         
         try:
@@ -57,14 +63,14 @@ class SendGridEmailService:
             response = self.client.send(message)
             
             if response.status_code in [200, 201, 202]:
-                print(f"✅ E-mail envoyé avec succès à {to_email} (SendGrid)")
+                logger.info(SuccessMessages.EMAIL_SENT.format(email=to_email, provider="SendGrid"))
                 return True
             else:
-                print(f"⚠️  Réponse SendGrid inattendue: {response.status_code}")
+                logger.warning(ErrorMessages.SENDGRID_INVALID_RESPONSE.format(status_code=response.status_code))
                 return False
                 
         except Exception as e:
-            print(f"❌ Erreur lors de l'envoi du mail à {to_email}: {str(e)}")
+            logger.error(ErrorMessages.SENDGRID_SEND_FAILED.format(error=str(e)))
             return False
     
     def send_confirmation_email(self, to_email: str, name: Optional[str] = None) -> bool:
@@ -78,52 +84,11 @@ class SendGridEmailService:
         Returns:
             True si envoyé avec succès, False sinon
         """
-        display_name = name if name else to_email.split('@')[0]
+        from utils.validators import extract_email_username, sanitize_name
         
+        display_name = sanitize_name(name) if name else extract_email_username(to_email)
         subject = "Confirmation de réception de votre formulaire"
-        
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
-                .content {{ background-color: #f9f9f9; padding: 30px; border-radius: 0 0 5px 5px; }}
-                .footer {{ text-align: center; margin-top: 20px; font-size: 12px; color: #666; }}
-                .button {{ background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 15px; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>✅ Confirmation de réception</h1>
-                </div>
-                <div class="content">
-                    <p>Bonjour <strong>{display_name}</strong>,</p>
-                    
-                    <p>Nous avons bien reçu votre soumission de formulaire Google Forms.</p>
-                    
-                    <p>Votre demande a été enregistrée avec succès et sera traitée dans les plus brefs délais.</p>
-                    
-                    <p>Si vous avez des questions, n'hésitez pas à nous contacter.</p>
-                    
-                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-                        <p style="margin: 0;"><strong>Détails de votre soumission:</strong></p>
-                        <p style="margin: 5px 0;">📧 E-mail: {to_email}</p>
-                        <p style="margin: 5px 0;">📅 Date: {self._get_current_datetime()}</p>
-                    </div>
-                </div>
-                <div class="footer">
-                    <p>Cet e-mail a été envoyé automatiquement, merci de ne pas y répondre.</p>
-                    <p>© 2025 Google Forms Auto-Responder</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+        html_content = EmailTemplates.get_confirmation_html(display_name, to_email)
         
         return self.send_email(to_email, subject, html_content, "html")
     
@@ -142,10 +107,5 @@ class SendGridEmailService:
             # En vérifiant que le client est correctement initialisé
             return bool(self.api_key)
         except Exception as e:
-            print(f"❌ Erreur de connexion SendGrid: {str(e)}")
+            logger.error(f"SendGrid connection test failed: {str(e)}")
             return False
-    
-    def _get_current_datetime(self) -> str:
-        """Retourne la date et heure actuelles formatées"""
-        from datetime import datetime
-        return datetime.now().strftime("%d/%m/%Y à %H:%M")

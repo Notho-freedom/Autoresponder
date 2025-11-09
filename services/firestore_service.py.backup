@@ -2,7 +2,6 @@
 Service de gestion de la base de données Firestore
 Gère l'enregistrement et la vérification des réponses déjà traitées
 Compatible avec le déploiement cloud (Render, Railway, etc.)
-VERSION OPTIMISÉE avec cache, logging et messages centralisés
 """
 import os
 import json
@@ -53,8 +52,6 @@ class FirestoreService:
                 raise ValueError(ErrorMessages.FIRESTORE_INIT_FAILED.format(error=str(e)))
         
         self.db = firestore.client()
-        self.collection = self.db.collection(self.collection_name)
-    
     def already_sent(self, response_id: str) -> bool:
         """
         Vérifie si une réponse a déjà été traitée
@@ -120,15 +117,15 @@ class FirestoreService:
             response_id: Identifiant unique de la réponse
             
         Returns:
-            Les données de la réponse ou None si non trouvée
-        """
-        try:
-            doc = self.collection.document(response_id).get()
             if doc.exists:
                 return doc.to_dict()
             return None
         except Exception as e:
             logger.error(ErrorMessages.FIRESTORE_QUERY_FAILED.format(error=str(e)))
+            return Nonedoc.to_dict()
+            return None
+        except Exception as e:
+            print(f"Erreur lors de la récupération: {str(e)}")
             return None
     
     def get_all_responses(self, limit: int = 100) -> List[Dict]:
@@ -138,16 +135,16 @@ class FirestoreService:
         Args:
             limit: Nombre maximum de résultats à retourner
             
-        Returns:
-            Liste des réponses
-        """
-        try:
             docs = self.collection.limit(limit).stream()
             results = [doc.to_dict() for doc in docs]
             logger.info(SuccessMessages.DATA_RETRIEVED.format(count=len(results)))
             return results
         except Exception as e:
             logger.error(ErrorMessages.FIRESTORE_QUERY_FAILED.format(error=str(e)))
+            return []lf.collection.limit(limit).stream()
+            return [doc.to_dict() for doc in docs]
+        except Exception as e:
+            print(f"Erreur lors de la récupération: {str(e)}")
             return []
     
     def get_stats(self) -> Dict:
@@ -199,7 +196,7 @@ class FirestoreService:
             return stats
             
         except Exception as e:
-            logger.error(f"Failed to calculate stats (using fallback): {str(e)}")
+            logger.error(f"Failed to calculate stats (using old method): {str(e)}")
             # Fallback sur l'ancienne méthode si count() n'est pas disponible
             return self._get_stats_fallback()
     
@@ -213,12 +210,14 @@ class FirestoreService:
         """
         try:
             docs = self.collection.limit(1000).stream()  # Limiter pour éviter timeout
-            
-            total = 0
-            mails_sent = 0
-            sms_sent = 0
-            
-            for doc in docs:
+        try:
+            self.collection.document(response_id).delete()
+            self._invalidate_stats_cache()
+            logger.info(f"Response deleted: {response_id}")
+            return True
+        except Exception as e:
+            logger.error(ErrorMessages.FIRESTORE_DELETE_FAILED.format(error=str(e)))
+            return Falseocs:
                 data = doc.to_dict()
                 total += 1
                 if data.get('sent_mail', False):
@@ -226,19 +225,13 @@ class FirestoreService:
                 if data.get('sent_sms', False):
                     sms_sent += 1
             
-            stats = {
+            return {
                 "total_responses": total,
                 "mails_sent": mails_sent,
                 "sms_sent": sms_sent,
                 "success_rate": 100 if total == 0 else round((mails_sent + sms_sent) / (total * 2) * 100, 2),
                 "note": "Limited to 1000 most recent responses"
             }
-            
-            # Mettre en cache
-            self._stats_cache = stats
-            self._stats_cache_time = time.time()
-            
-            return stats
         except Exception as e:
             logger.error(ErrorMessages.FIRESTORE_QUERY_FAILED.format(error=str(e)))
             return {
