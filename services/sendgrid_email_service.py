@@ -6,7 +6,7 @@ VERSION OPTIMISÉE avec logging et templates centralisés
 import os
 from typing import Optional
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Email, To, Content
+from sendgrid.helpers.mail import Mail, Email, To, Content, ReplyTo
 
 from config.constants import ErrorMessages, SuccessMessages, EmailTemplates
 from utils.logger import setup_logger
@@ -60,14 +60,9 @@ class SendGridEmailService:
                 html_content=Content("text/html", content) if content_type == "html" else Content("text/plain", content)
             )
             
-            # Anti-spam: Reply-To pour ne pas répondre à noreply
-            message.reply_to = Email(os.getenv('SENDGRID_REPLY_TO_EMAIL'), "Contact Support")
-            
-            # Headers pour améliorer la délivrabilité
-            message.tracking_settings = {
-                "click_tracking": {"enable": False},
-                "open_tracking": {"enable": False}
-            }
+            # Anti-spam: Reply-To valide
+            reply_to_email = os.getenv('SENDGRID_REPLY_TO_EMAIL', '')
+            message.reply_to = ReplyTo(reply_to_email, "Support")
             
             response = self.client.send(message)
             
