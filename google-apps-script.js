@@ -24,7 +24,7 @@
 const SERVER_URL = 'https://votre-serveur.com';
 
 // Clé secrète pour authentifier les requêtes (doit correspondre à celle du backend)
-const SECRET_KEY = 'your_secret_key_here';
+const SECRET_KEY = 'your_secret_key_for_webhook_authentication';
 
 // Nom des champs du formulaire (à adapter selon votre formulaire)
 const EMAIL_FIELD_NAME = 'Adresse e-mail';  // ou 'Email' selon votre formulaire
@@ -40,33 +40,74 @@ const NAME_FIELD_NAME = 'Nom';              // ou 'Name' (optionnel)
  */
 function onFormSubmit(e) {
   try {
-    // Récupérer les réponses du formulaire
-    const namedValues = e.namedValues;
-    
-    // Log pour debugging (visible dans Exécutions > Logs)
+    // Log de l'objet e pour debugging
     Logger.log('📝 Nouvelle soumission de formulaire reçue');
-    Logger.log('Données brutes: ' + JSON.stringify(namedValues));
+    Logger.log('Type de e: ' + typeof e);
+    Logger.log('Contenu de e: ' + JSON.stringify(e));
     
-    // Extraire les champs nécessaires
-    const email = getFieldValue(namedValues, EMAIL_FIELD_NAME);
-    const phone = getFieldValue(namedValues, PHONE_FIELD_NAME);
-    const name = getFieldValue(namedValues, NAME_FIELD_NAME);
+    // Récupérer les réponses du formulaire
+    // Méthode alternative si e.namedValues est undefined
+    let namedValues;
+    
+    if (e && e.namedValues) {
+      // Méthode standard avec déclencheur
+      namedValues = e.namedValues;
+      Logger.log('✅ Utilisation de e.namedValues');
+    } else if (e && e.response) {
+      // Méthode alternative avec e.response
+      namedValues = e.response.getItemResponses().reduce((acc, item) => {
+        const title = item.getItem().getTitle();
+        const response = item.getResponse();
+        acc[title] = Array.isArray(response) ? response : [response];
+        return acc;
+      }, {});
+      Logger.log('✅ Utilisation de e.response (méthode alternative)');
+    } else {
+      // Dernière tentative : récupérer directement du formulaire
+      const form = FormApp.getActiveForm();
+      const formResponses = form.getResponses();
+      if (formResponses.length > 0) {
+        const lastResponse = formResponses[formResponses.length - 1];
+        namedValues = lastResponse.getItemResponses().reduce((acc, item) => {
+          const title = item.getItem().getTitle();
+          const response = item.getResponse();
+          acc[title] = Array.isArray(response) ? response : [response];
+          return acc;
+        }, {});
+        Logger.log('✅ Récupération de la dernière réponse du formulaire');
+      } else {
+        Logger.log('❌ Aucune donnée disponible');
+        return;
+      }
+    }
+    
+    Logger.log('Données extraites: ' + JSON.stringify(namedValues));
+    
+    // Extraire les champs nécessaires (toujours extraire la première valeur du tableau)
+    let email = getFieldValue(namedValues, EMAIL_FIELD_NAME);
+    let phone = getFieldValue(namedValues, PHONE_FIELD_NAME);
+    let name = getFieldValue(namedValues, NAME_FIELD_NAME);
+    
+    // Si les valeurs sont toujours des tableaux, extraire le premier élément
+    if (Array.isArray(email)) email = email[0] || '';
+    if (Array.isArray(phone)) phone = phone[0] || '';
+    if (Array.isArray(name)) name = name[0] || '';
     
     // Vérifier que les champs obligatoires sont présents
     if (!email || !phone) {
       Logger.log('❌ Erreur : e-mail ou téléphone manquant');
       Logger.log('Email: ' + email);
       Logger.log('Phone: ' + phone);
+      Logger.log('Champs disponibles: ' + Object.keys(namedValues).join(', '));
       return;
     }
     
-    // Construire le payload à envoyer
+    // Construire le payload à envoyer (avec chaînes simples, pas de tableaux)
     const payload = {
-      email: email,
-      phone: phone,
-      name: name,
-      timestamp: new Date().toISOString(),
-      namedValues: namedValues  // Envoyer aussi les données brutes pour flexibilité
+      email: String(email),
+      phone: String(phone),
+      name: String(name || ''),
+      timestamp: new Date().toISOString()
     };
     
     // Options de la requête HTTP
