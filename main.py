@@ -9,6 +9,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 
@@ -25,6 +26,19 @@ app = FastAPI(
     title="Google Forms Auto-Responder",
     description="Microservice d'envoi automatique d'e-mails et SMS lors de soumissions de formulaires Google",
     version="1.0.0"
+)
+
+# Configuration CORS pour accepter les requêtes de Google Apps Script
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://script.google.com",
+        "https://script.googleusercontent.com",
+        "*"  # En production, remplacez par votre domaine spécifique
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Initialiser les services
