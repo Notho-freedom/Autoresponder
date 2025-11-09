@@ -61,8 +61,9 @@ class SendGridEmailService:
             )
             
             # Anti-spam: Reply-To valide
-            reply_to_email = os.getenv('SENDGRID_REPLY_TO_EMAIL', '')
-            message.reply_to = ReplyTo(reply_to_email, "Support")
+            reply_to_email = os.getenv('SENDGRID_REPLY_TO_EMAIL', 'support@example.com')
+            reply_to_name = os.getenv('SENDGRID_EMAIL_NAME', 'Support')
+            message.reply_to = ReplyTo(reply_to_email, reply_to_name)
             
             response = self.client.send(message)
             
