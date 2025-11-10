@@ -1,7 +1,7 @@
 """
 Gestionnaire de services optimisé avec pattern Singleton
 Gère l'initialisation et le cycle de vie des services
-Version Production: SendGrid pour emails, Vonage pour SMS
+Version Brevo: Brevo pour emails, Vonage pour SMS
 """
 import os
 from typing import Optional
@@ -38,25 +38,25 @@ class ServiceManager:
         self._db_service = None
         self._initialized = True
         
-        logger.info("ServiceManager initialized (SendGrid + Vonage)")
+        logger.info("ServiceManager initialized (Brevo + Vonage)")
     
     @property
     def email_service(self):
         """
-        Retourne le service email SendGrid (initialisation paresseuse)
+        Retourne le service email Brevo (initialisation paresseuse)
         
         Returns:
-            Instance du service SendGrid
+            Instance du service Brevo
         """
         if self._email_service is None:
             with self._lock:
                 if self._email_service is None:
                     try:
-                        from services.email_service import EmailService
-                        self._email_service = EmailService()
-                        logger.info("Email service initialized: SendGrid")
+                        from services.brevo_email_service import BrevoEmailService
+                        self._email_service = BrevoEmailService()
+                        logger.info("Email service initialized: Brevo")
                     except Exception as e:
-                        logger.error(f"Failed to initialize SendGrid service: {e}")
+                        logger.error(f"Failed to initialize Brevo service: {e}")
                         raise
         return self._email_service
     
@@ -151,7 +151,7 @@ class ServiceManager:
         """
         stats = {
             "providers": {
-                "email": "SendGrid",
+                "email": "Brevo",
                 "sms": "Vonage"
             },
             "services_initialized": {
