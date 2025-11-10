@@ -1,7 +1,7 @@
-"""Module d'initialisation des services"""
+"""Module d'initialisation des services AWS"""
 from .firestore_service import FirestoreService
-from .smtp_email_service import SMTPEmailService
-from .sms_service import SMSService
+from .aws_ses_service import AWSSESService
+from .aws_sns_service import AWSSNSService
 from .db_factory import get_database_service
 
-__all__ = ['FirestoreService', 'SMTPEmailService', 'SMSService', 'get_database_service']
+__all__ = ['FirestoreService', 'AWSSESService', 'AWSSNSService', 'get_database_service']
