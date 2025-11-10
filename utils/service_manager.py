@@ -1,7 +1,7 @@
 """
 Gestionnaire de services optimisé avec pattern Singleton
 Gère l'initialisation et le cycle de vie des services
-AWS ONLY: AWS SES pour emails, AWS SNS pour SMS
+Version Production: SendGrid pour emails, Vonage pour SMS
 """
 import os
 from typing import Optional
@@ -38,45 +38,45 @@ class ServiceManager:
         self._db_service = None
         self._initialized = True
         
-        logger.info("ServiceManager initialized (AWS SES + AWS SNS)")
+        logger.info("ServiceManager initialized (SendGrid + Vonage)")
     
     @property
     def email_service(self):
         """
-        Retourne le service email AWS SES (initialisation paresseuse)
+        Retourne le service email SendGrid (initialisation paresseuse)
         
         Returns:
-            Instance du service AWS SES
+            Instance du service SendGrid
         """
         if self._email_service is None:
             with self._lock:
                 if self._email_service is None:
                     try:
-                        from services.aws_ses_service import AWSSESService
-                        self._email_service = AWSSESService()
-                        logger.info("Email service initialized: AWS SES")
+                        from services.email_service import EmailService
+                        self._email_service = EmailService()
+                        logger.info("Email service initialized: SendGrid")
                     except Exception as e:
-                        logger.error(f"Failed to initialize AWS SES service: {e}")
+                        logger.error(f"Failed to initialize SendGrid service: {e}")
                         raise
         return self._email_service
     
     @property
     def sms_service(self):
         """
-        Retourne le service SMS AWS SNS (initialisation paresseuse)
+        Retourne le service SMS Vonage (initialisation paresseuse)
         
         Returns:
-            Instance du service AWS SNS
+            Instance du service Vonage SMS
         """
         if self._sms_service is None:
             with self._lock:
                 if self._sms_service is None:
                     try:
-                        from services.aws_sns_service import AWSSNSService
-                        self._sms_service = AWSSNSService()
-                        logger.info("SMS service initialized: AWS SNS")
+                        from services.vonage_sms_service import VonageSMSService
+                        self._sms_service = VonageSMSService()
+                        logger.info("SMS service initialized: Vonage")
                     except Exception as e:
-                        logger.error(f"Failed to initialize AWS SNS service: {e}")
+                        logger.error(f"Failed to initialize Vonage service: {e}")
                         raise
         return self._sms_service
     
@@ -151,8 +151,8 @@ class ServiceManager:
         """
         stats = {
             "providers": {
-                "email": "AWS SES",
-                "sms": "AWS SNS"
+                "email": "SendGrid",
+                "sms": "Vonage"
             },
             "services_initialized": {
                 "email": self._email_service is not None,
