@@ -1,10 +1,10 @@
 """
 Gestionnaire de services optimisé avec pattern Singleton
 Gère l'initialisation et le cycle de vie des services
-Support multi-providers: SendGrid/SMTP pour emails, Twilio/AWS SNS pour SMS
+AWS ONLY: AWS SES pour emails, AWS SNS pour SMS
 """
 import os
-from typing import Optional, Union
+from typing import Optional
 from threading import Lock
 
 from utils.logger import setup_logger
@@ -33,73 +33,50 @@ class ServiceManager:
         if self._initialized:
             return
         
-        self._email_service: Optional[Union[SendGridEmailService, SMTPEmailService]] = None
-        self._sms_service: Optional[Union[SMSService, AWSSNSService]] = None
+        self._email_service = None
+        self._sms_service = None
         self._db_service = None
-        
-        # Lire les providers depuis .env
-        self._email_provider = os.getenv('EMAIL_PROVIDER', 'sendgrid').lower()
-        self._sms_provider = os.getenv('SMS_PROVIDER', 'twilio').lower()
-        
-        # Validation: au moins un provider doit être configuré
-        if self._email_provider not in ['sendgrid', 'smtp']:
-            logger.warning(f"Invalid EMAIL_PROVIDER '{self._email_provider}', defaulting to 'sendgrid'")
-            self._email_provider = 'sendgrid'
-        
-        if self._sms_provider not in ['twilio', 'sns']:
-            logger.warning(f"Invalid SMS_PROVIDER '{self._sms_provider}', defaulting to 'twilio'")
-            self._sms_provider = 'twilio'
-        
         self._initialized = True
-        logger.info(f"ServiceManager initialized (Email: {self._email_provider}, SMS: {self._sms_provider})")
+        
+        logger.info("ServiceManager initialized (AWS SES + AWS SNS)")
     
     @property
     def email_service(self):
         """
-        Retourne le service email selon le provider configuré (initialisation paresseuse)
+        Retourne le service email AWS SES (initialisation paresseuse)
         
         Returns:
-            Instance du service email (SendGrid ou SMTP)
+            Instance du service AWS SES
         """
         if self._email_service is None:
             with self._lock:
                 if self._email_service is None:
                     try:
-                        if self._email_provider == 'smtp':
-                            from services.smtp_email_service import SMTPEmailService
-                            self._email_service = SMTPEmailService()
-                            logger.info("Email service initialized: SMTP")
-                        else:
-                            from services.sendgrid_email_service import SendGridEmailService
-                            self._email_service = SendGridEmailService()
-                            logger.info("Email service initialized: SendGrid")
+                        from services.aws_ses_service import AWSSESService
+                        self._email_service = AWSSESService()
+                        logger.info("Email service initialized: AWS SES")
                     except Exception as e:
-                        logger.error(f"Failed to initialize email service ({self._email_provider}): {e}")
+                        logger.error(f"Failed to initialize AWS SES service: {e}")
                         raise
         return self._email_service
     
     @property
     def sms_service(self):
         """
-        Retourne le service SMS selon le provider configuré (initialisation paresseuse)
+        Retourne le service SMS AWS SNS (initialisation paresseuse)
         
         Returns:
-            Instance du service SMS (Twilio ou AWS SNS)
+            Instance du service AWS SNS
         """
         if self._sms_service is None:
             with self._lock:
                 if self._sms_service is None:
                     try:
-                        if self._sms_provider == 'sns':
-                            from services.aws_sns_service import AWSSNSService
-                            self._sms_service = AWSSNSService()
-                            logger.info("SMS service initialized: AWS SNS")
-                        else:
-                            from services.sms_service import SMSService
-                            self._sms_service = SMSService()
-                            logger.info("SMS service initialized: Twilio")
+                        from services.aws_sns_service import AWSSNSService
+                        self._sms_service = AWSSNSService()
+                        logger.info("SMS service initialized: AWS SNS")
                     except Exception as e:
-                        logger.error(f"Failed to initialize SMS service ({self._sms_provider}): {e}")
+                        logger.error(f"Failed to initialize AWS SNS service: {e}")
                         raise
         return self._sms_service
     
@@ -174,8 +151,8 @@ class ServiceManager:
         """
         stats = {
             "providers": {
-                "email": self._email_provider,
-                "sms": self._sms_provider
+                "email": "AWS SES",
+                "sms": "AWS SNS"
             },
             "services_initialized": {
                 "email": self._email_service is not None,
