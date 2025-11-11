@@ -1,7 +1,7 @@
 """
 Gestionnaire de services optimisé avec pattern Singleton
 Gère l'initialisation et le cycle de vie des services
-Version Brevo: Brevo pour emails, Vonage pour SMS
+Version Brevo: Brevo pour emails ET SMS (plateforme unique)
 """
 import os
 from typing import Optional
@@ -38,7 +38,7 @@ class ServiceManager:
         self._db_service = None
         self._initialized = True
         
-        logger.info("ServiceManager initialized (Brevo + Vonage)")
+        logger.info("ServiceManager initialized (Brevo Email + SMS)")
     
     @property
     def email_service(self):
@@ -63,20 +63,20 @@ class ServiceManager:
     @property
     def sms_service(self):
         """
-        Retourne le service SMS Vonage (initialisation paresseuse)
+        Retourne le service SMS Brevo (initialisation paresseuse)
         
         Returns:
-            Instance du service Vonage SMS
+            Instance du service Brevo SMS
         """
         if self._sms_service is None:
             with self._lock:
                 if self._sms_service is None:
                     try:
-                        from services.vonage_sms_service import VonageSMSService
-                        self._sms_service = VonageSMSService()
-                        logger.info("SMS service initialized: Vonage")
+                        from services.brevo_sms_service import BrevoSMSService
+                        self._sms_service = BrevoSMSService()
+                        logger.info("SMS service initialized: Brevo SMS")
                     except Exception as e:
-                        logger.error(f"Failed to initialize Vonage service: {e}")
+                        logger.error(f"Failed to initialize Brevo SMS service: {e}")
                         raise
         return self._sms_service
     
@@ -152,7 +152,7 @@ class ServiceManager:
         stats = {
             "providers": {
                 "email": "Brevo",
-                "sms": "Vonage"
+                "sms": "Brevo"
             },
             "services_initialized": {
                 "email": self._email_service is not None,
